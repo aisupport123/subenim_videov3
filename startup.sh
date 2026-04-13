@@ -1,140 +1,219 @@
 #!/bin/bash
 set -e
 
-echo "🚀 Provisioning ANIMATOR V2.1 (VIDEO) started..."
+# Активация окружения
+source /venv/main/bin/activate
 
-apt-get update && apt-get install -y git wget aria2 python3-pip unzip
+WORKSPACE=${WORKSPACE:-/workspace}
+COMFYUI_DIR="${WORKSPACE}/ComfyUI"
+VENV_PYTHON="/venv/main/bin/python"
+VENV_PIP="/venv/main/bin/pip"
 
-PIP="/venv/main/bin/pip"
-COMFY="/workspace/ComfyUI"
-MODELS="$COMFY/models"
-NODES="$COMFY/custom_nodes"
-WORKFLOWS="$COMFY/user/default/workflows"
+# Настройки API и Турбо-движка
+export PYTORCH_ALLOC_CONF="expandable_segments:True"
+export HF_HUB_ENABLE_HF_TRANSFER=1
 
-echo "📦 Using pip: $PIP"
+if [ -z "$HF_TOKEN" ]; then
+    echo -e "\033[0;31m [!] WARNING: HF_TOKEN не найден в Environment Variables! \033[0m"
+    echo -e "\033[0;33m Передай его через Vast.ai: -e HF_TOKEN=hf_... \033[0m"
+fi
 
-# ====================== CUSTOM NODES ======================
-echo "📥 Cloning custom nodes..."
-cd "$NODES"
+echo "=== ComfyUI запускает ( АНИМАТОР 2.5 ) ==="
 
-git clone https://github.com/kijai/ComfyUI-WanVideoWrapper.git || true
-git clone https://github.com/kijai/ComfyUI-WanAnimatePreprocess.git || true
-git clone https://github.com/kijai/ComfyUI-KJNodes.git || true
-git clone https://github.com/rgthree/rgthree-comfy.git || true
-git clone https://github.com/ltdrdata/ComfyUI-Impact-Pack.git || true
-git clone https://github.com/teskor-hub/comfyui-teskors-utils.git || true
-git clone https://github.com/PozzettiAndrea/ComfyUI-SAM3.git || true
-git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git || true
-git clone https://github.com/ClownsharkBatwing/ComfyUI-ClownsharK.git || true
-git clone https://github.com/cubiq/ComfyUI_essentials.git || true
-git clone https://github.com/LeonQ8/ComfyUI-Dynamic-Lora-Scheduler.git || true
-git clone https://github.com/PGCRT/CRT-Nodes.git || true
+# Предварительная установка турбо-загрузчика
+$VENV_PIP install --no-cache-dir hf_transfer
 
-echo "📦 Installing node requirements..."
-$PIP install --upgrade --force-reinstall opencv-python opencv-python-headless
+echo ">>> Оптимизация библиотек мониторинга и ускорение DWPose..."
+$VENV_PIP uninstall -y pynvml && $VENV_PIP install nvidia-ml-py
+$VENV_PIP install onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
 
-for dir in */; do
-  if [ -f "$dir/requirements.txt" ]; then
-    echo "→ Installing requirements for $dir"
-    $PIP install -r "$dir/requirements.txt" || true
-  fi
-done
+APT_PACKAGES=()
+PIP_PACKAGES=()
 
-# ====================== WORKFLOWS ======================
-echo "📂 Copying workflows..."
-mkdir -p "$WORKFLOWS"
+NODES=(
+    "https://github.com/ltdrdata/ComfyUI-Manager"
+    "https://github.com/ltdrdata/ComfyUI-Impact-Pack"
+    "https://github.com/ltdrdata/ComfyUI-Impact-Subpack"
+    "https://github.com/kijai/ComfyUI-WanVideoWrapper"
+    "https://github.com/kijai/ComfyUI-KJNodes"
+    "https://github.com/kijai/ComfyUI-segment-anything-2"
+    "https://github.com/kijai/ComfyUI-WanAnimatePreprocess"
+    "https://github.com/pythongosssss/ComfyUI-Custom-Scripts"
+    "https://github.com/chflame163/ComfyUI_LayerStyle"
+    "https://github.com/rgthree/rgthree-comfy"
+    "https://github.com/yolain/ComfyUI-Easy-Use"
+    "https://github.com/cubiq/ComfyUI_essentials"
+    "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite"
+    "https://github.com/jnxmx/ComfyUI_HuggingFace_Downloader"
+    "https://github.com/fq393/ComfyUI-ZMG-Nodes"
+    "https://github.com/ClownsharkBatwing/RES4LYF"
+    "https://github.com/chrisgoringe/cg-use-everywhere"
+    "https://github.com/crystian/ComfyUI-Crystools"
+    "https://github.com/plugcrypt/CRT-Nodes"
+    "https://github.com/evanspearman/ComfyMath"
+    "https://github.com/Fannovel16/comfyui_controlnet_aux"
+    "https://github.com/Smirnov75/ComfyUI-mxToolkit"
+    "https://github.com/TheLustriVA/ComfyUI-Image-Size-Tools"
+    "https://github.com/ZhiHui6/zhihui_nodes_comfyui"
+    "https://github.com/EllangoK/ComfyUI-post-processing-nodes"
+    "https://github.com/teskor-hub/comfyui-teskors-utils"
+    "https://github.com/hanjangma41/NEW-UTILSs"
+    "https://github.com/WASasquatch/was-node-suite-comfyui"
+)
 
-cp /workspace/provisioning/animator_v2_1_0.json \
-  "$WORKFLOWS/animator_v2_1_0.json" \
-  2>/dev/null || echo "⚠️ animator_v2_1_0.json not found"
+# --- ФУНКЦИИ ---
 
-cp /workspace/provisioning/animator_v2_1_0_mask_mode.json \
-  "$WORKFLOWS/animator_v2_1_0_mask_mode.json" \
-  2>/dev/null || echo "⚠️ animator_v2_1_0_mask_mode.json not found"
+# Универсальная турбо-загрузка
+download_hf() {
+    local file_or_url=$1
+    local dir=$2
+    local repo=${3:-"VladimirSoch/ANIMATE25"} 
+    
+    mkdir -p "$dir"
+    
+    if [[ "$file_or_url" =~ huggingface\.co ]]; then
+        local repo_id=$(echo "$file_or_url" | sed -E 's|https://huggingface.co/([^/]+/[^/]+)/resolve/[^/]+/(.*)|\1|')
+        local filename=$(echo "$file_or_url" | sed -E 's|https://huggingface.co/([^/]+/[^/]+)/resolve/[^/]+/(.*)|\2|')
+    else
+        local repo_id="$repo"
+        local filename="$file_or_url"
+    fi
 
-# ====================== MODEL DIRS ======================
-echo "📁 Creating model directories..."
-mkdir -p \
-  "$MODELS/diffusion_models" \
-  "$MODELS/vae" \
-  "$MODELS/clip_vision" \
-  "$MODELS/clip" \
-  "$MODELS/loras" \
-  "$MODELS/detection" \
-  "$MODELS/controlnet"
+    if [ ! -f "$dir/$filename" ]; then
+        echo "🚀 HF Turbo Download: $filename"
+        
+        # --- БРОНЕБОЙНЫЙ ТУРБО-РЕЖИМ (3 попытки на каждый файл) ---
+        local max_retries=3
+        local attempt=1
+        local success=0
 
-cd "$MODELS"
+        while [ $attempt -le $max_retries ]; do
+            if $VENV_PYTHON -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='$repo_id', filename='$filename', local_dir='$dir', local_dir_use_symlinks=False, token='$HF_TOKEN')"; then
+                success=1
+                break # Успешно скачали, выходим из цикла
+            else
+                echo "⚠️ Обрыв связи при скачивании $filename (Попытка $attempt из $max_retries). Пробуем снова через 3 секунды..."
+                attempt=$((attempt + 1))
+                sleep 3
+            fi
+        done
 
-# ====================== CORE MODELS ======================
-echo "📥 1. MAIN MODEL = Wan 2.2 Animate 14B (IMPORTANT FIX)"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/diffusion_models" \
-  --out=WanModel.safetensors \
-  "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/Wan22Animate/Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors"
+        if [ $success -eq 0 ]; then
+            echo "❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось скачать $filename даже после $max_retries попыток. Идем дальше..."
+        fi
+    fi
+}
 
-echo "📥 2. VAE"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/vae" \
-  --out=mo_vae.safetensors \
-  "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1_VAE_bf16.safetensors"
+function provisioning_get_files() {
+    local dir="$1"
+    shift
+    local files=("$@")
+    for item in "${files[@]}"; do
+        download_hf "$item" "$dir"
+    done
+}
 
-echo "📥 3. CLIP Vision"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/clip_vision" \
-  --out=klip_vision.safetensors \
-  "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors"
+function provisioning_start() {
+    provisioning_get_apt_packages
+    provisioning_clone_comfyui
+    provisioning_install_base_reqs
+    provisioning_get_nodes
+    provisioning_get_pip_packages
 
-echo "📥 4. Text Encoder"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/clip" \
-  --out=text_enc.safetensors \
-  "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+    echo "##############################################"
+    echo "# РЕЖИМ: ANIMATOR 2.5                        #"
+    echo "##############################################"
+    
+    # Модели и Контролнеты
+    download_hf "Wan21_Uni3C_controlnet_fp16.safetensors" "$COMFYUI_DIR/models/controlnet"
+    download_hf "WanModel.safetensors" "$COMFYUI_DIR/models/diffusion_models"
+    download_hf "vae.safetensors" "$COMFYUI_DIR/models/vae"
+    download_hf "klip_vision.safetensors" "$COMFYUI_DIR/models/clip_vision"
+    download_hf "text_enc.safetensors" "$COMFYUI_DIR/models/text_encoders"
+    
+    # LoRAs
+    download_hf "WanFun.reworked.safetensors" "$COMFYUI_DIR/models/loras"
+    download_hf "light.safetensors" "$COMFYUI_DIR/models/loras"
+    download_hf "wan.reworked.safetensors" "$COMFYUI_DIR/models/loras"
+    download_hf "WanPusa.safetensors" "$COMFYUI_DIR/models/loras"
+    
+    # Вспомогательные
+    download_hf "sam2.1_hiera_base_plus.safetensors" "$COMFYUI_DIR/models/sam2"
+    download_hf "vitpose_h_wholebody_model.onnx" "$COMFYUI_DIR/models/detection"
+    download_hf "vitpose_h_wholebody_data.bin" "$COMFYUI_DIR/models/detection"
+    download_hf "yolov10m.onnx" "$COMFYUI_DIR/models/detection"
 
-# ====================== LORAS ======================
-echo "📥 5. LoRA light"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/loras" \
-  --out=light.safetensors \
-  "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/LoRAs/Wan22_relight/WanAnimate_relight_lora_fp16.safetensors" || true
+    echo "HERWAM настроил всё под ANIMATOR 2.5!"
+}
 
-echo "📥 6. LoRA wan_reworked"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/loras" \
-  --out=wan_reworked.safetensors \
-  "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_AccVid_I2V_480P_14B_lora_rank32_fp16.safetensors" || true
+function provisioning_clone_comfyui() {
+    if [[ ! -d "${COMFYUI_DIR}" ]]; then
+        git clone https://github.com/comfyanonymous/ComfyUI.git "${COMFYUI_DIR}"
+    fi
+}
 
-echo "📥 7. LoRA WanPusa"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/loras" \
-  --out=WanPusa.safetensors \
-  "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/loras/WanPusa.safetensors" || true
+function provisioning_install_base_reqs() {
+    cd "${COMFYUI_DIR}"
+    $VENV_PIP install --no-cache-dir -r requirements.txt
+}
 
-echo "📥 8. LoRA WanFun.reworked"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/loras" \
-  --out=WanFun.reworked.safetensors \
-  "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/loras/WanFun.reworked.safetensors" || true
+function provisioning_get_apt_packages() {
+    if [[ ${#APT_PACKAGES[@]} -gt 0 ]]; then
+        sudo apt update && sudo apt install -y "${APT_PACKAGES[@]}"
+    fi
+}
 
-echo "🔗 Creating symlink: wan.reworked.safetensors"
-ln -sf "$MODELS/loras/wan_reworked.safetensors" \
-       "$MODELS/loras/wan.reworked.safetensors" || true
+function provisioning_get_pip_packages() {
+    if [[ ${#PIP_PACKAGES[@]} -gt 0 ]]; then
+        $VENV_PIP install --no-cache-dir "${PIP_PACKAGES[@]}"
+    fi
+}
 
-# ====================== DETECTION ======================
-echo "📥 9. Detection: yolov10m.onnx"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/detection" \
-  --out=yolov10m.onnx \
-  "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/resolve/main/process_checkpoint/det/yolov10m.onnx"
+function provisioning_get_nodes() {
+    mkdir -p "${COMFYUI_DIR}/custom_nodes"
+    cd "${COMFYUI_DIR}/custom_nodes"
+    for repo in "${NODES[@]}"; do
+        dir="${repo##*/}"
+        path="./${dir}"
+        if [[ ! -d "$path" ]]; then
+            git clone "$repo" "$path" --recursive
+        fi
+        if [[ -f "$path/requirements.txt" ]]; then
+            sed -i '/torch/d; /torchvision/d' "$path/requirements.txt"
+            $VENV_PIP install --no-cache-dir -r "$path/requirements.txt"
+        fi
+    done
+}
 
-echo "📥 10. Detection: vitpose_h_wholebody_model.onnx"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/detection" \
-  --out=vitpose_h_wholebody_model.onnx \
-  "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_model.onnx"
+provisioning_start
 
-echo "📥 11. Detection: vitpose_h_wholebody_data.bin"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/detection" \
-  --out=vitpose_h_wholebody_data.bin \
-  "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_data.bin"
+rm -f /.provisioning
 
-# ====================== CONTROLNET ======================
-echo "📥 12. ControlNet"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/controlnet" \
-  --out=Wan21_Uni3C_controlnet_fp16.safetensors \
-  "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_Uni3C_controlnet_fp16.safetensors" || true
-
-echo ""
-echo "✅ ANIMATOR V2.1 setup finished"
-echo "Main fix: Wan 2.2 Animate model is now used as WanModel.safetensors"
-echo "If optional LoRAs fail, keep those slots on NONE."
-echo "🔥 Ready."
+echo "=== ХЕРВАМ запускает ComfyUI ==="
+# --- ФИНАЛЬНЫЙ БАННЕР HERWAM ---
+echo "##############################################################"
+echo "#                                                            #"
+echo "#  _    _  ______  _____  __          __     __  __          #"
+echo "# | |  | ||  ____||  __ \ \ \        / /\   |  \/  |         #"
+echo "# | |__| || |__   | |__) | \ \  /\  / /  \  | \  / |         #"
+echo "# |  __  ||  __|  |  _  /   \ \/  \/ / /\ \ | |\/| |         #"
+echo "# | |  | || |____ | | \ \    \  /\  / ____ \| |  | |         #"
+echo "# |_|  |_||______||_|  \_\    \/  \/_/    \_\_|  |_|         #"
+echo "#                                                            #"
+echo "##############################################################"
+echo " "
+# --- ВЫВОД ПРАВ СОБСТВЕННОСТИ В ЛОГИ ---
+echo "#################################################################################"
+echo "#                                                                               #"
+echo "#   (c) 2026 HERWAM. ALL RIGHTS RESERVED.                                       #"
+echo "#                                                                               #"
+echo "#   THIS CONFIGURATION FILE IS THE INTELLECTUAL PROPERTY OF THE OWNER.          #"
+echo "#   ANY COPYING, DISTRIBUTION, OR USE OF THIS CODE WITHOUT THE EXPRESS          #"
+echo "#   WRITTEN PERMISSION OF THE OWNER IS STRICTLY PROHIBITED.                     #"
+echo "#                                                                               #"
+echo "#   (c) 2026 HERWAM. ВСЕ ПРАВА ЗАЩИЩЕНЫ.                                        #"
+echo "#                                                                               #"
+echo "#   ДАННЫЙ ФАЙЛ ЯВЛЯЕТСЯ ИНТЕЛЛЕКТУАЛЬНОЙ СОБСТВЕННОСТЬЮ ВЛАДЕЛЬЦА.             #"
+echo "#   КОПИРОВАНИЕ ИЛИ ИСПОЛЬЗОВАНИЕ БЕЗ РАЗРЕШЕНИЯ СТРОГО ЗАПРЕЩЕНО.              #"
+echo "#   ДЛЯ СОТРУДНИЧЕСТВА ОБРАЩАТЬСЯ В TG https://t.me/vnknshn                     #"
+echo "#################################################################################"
