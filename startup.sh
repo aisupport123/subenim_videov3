@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Активация окружения
+# === [subenim] INIT ===
 source /venv/main/bin/activate
 
 WORKSPACE=${WORKSPACE:-/workspace}
@@ -9,27 +9,29 @@ COMFYUI_DIR="${WORKSPACE}/ComfyUI"
 VENV_PYTHON="/venv/main/bin/python"
 VENV_PIP="/venv/main/bin/pip"
 
-# Настройки API и Турбо-движка
 export PYTORCH_ALLOC_CONF="expandable_segments:True"
 export HF_HUB_ENABLE_HF_TRANSFER=1
 
+HF_REPO_ID="${HF_REPO_ID:-vilone60/videov3}"
+
 if [ -z "$HF_TOKEN" ]; then
-    echo -e "\033[0;31m [!] WARNING: HF_TOKEN не найден в Environment Variables! \033[0m"
-    echo -e "\033[0;33m Передай его через Vast.ai: -e HF_TOKEN=hf_... \033[0m"
+    echo -e "\033[0;31m [subenim][!] HF_TOKEN не найден! \033[0m"
+    echo -e "\033[0;33m [subenim] Передай через -e HF_TOKEN=hf_... \033[0m"
 fi
 
-echo "=== ComfyUI запускает ( АНИМАТОР 2.5 ) ==="
+echo "[subenim] === COMFYUI START (ANIMATOR 2.5) ==="
 
-# Предварительная установка турбо-загрузчика
+# === [subenim] SETUP ===
 $VENV_PIP install --no-cache-dir hf_transfer
 
-echo ">>> Оптимизация библиотек мониторинга и ускорение DWPose..."
+echo "[subenim] >>> Оптимизация DWPose..."
 $VENV_PIP uninstall -y pynvml && $VENV_PIP install nvidia-ml-py
 $VENV_PIP install onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
 
 APT_PACKAGES=()
 PIP_PACKAGES=()
 
+# === [subenim] NODES ===
 NODES=(
     "https://github.com/ltdrdata/ComfyUI-Manager"
     "https://github.com/ltdrdata/ComfyUI-Impact-Pack"
@@ -59,30 +61,32 @@ NODES=(
     "https://github.com/teskor-hub/comfyui-teskors-utils"
     "https://github.com/hanjangma41/NEW-UTILSs"
     "https://github.com/WASasquatch/was-node-suite-comfyui"
+    "https://github.com/Starnodes2024/ComfyUI_StarNodes"
+    "https://github.com/DesertPixelAi/ComfyUI-Desert-Pixel-Nodes"
 )
 
-# --- ФУНКЦИИ ---
-
-# Универсальная турбо-загрузка
+# === [subenim] DOWNLOAD FUNC ===
 download_hf() {
-    local file_or_url=$1
-    local dir=$2
-    local repo=${3:-"VladimirSoch/ANIMATE25"} 
-    
+    local file_or_url="$1"
+    local dir="$2"
+    local repo="${3:-$HF_REPO_ID}"
+
     mkdir -p "$dir"
-    
+
+    local repo_id
+    local filename
+
     if [[ "$file_or_url" =~ huggingface\.co ]]; then
-        local repo_id=$(echo "$file_or_url" | sed -E 's|https://huggingface.co/([^/]+/[^/]+)/resolve/[^/]+/(.*)|\1|')
-        local filename=$(echo "$file_or_url" | sed -E 's|https://huggingface.co/([^/]+/[^/]+)/resolve/[^/]+/(.*)|\2|')
+        repo_id=$(echo "$file_or_url" | sed -E 's|https://huggingface.co/([^/]+/[^/]+)/resolve/[^/]+/(.*)|\1|')
+        filename=$(echo "$file_or_url" | sed -E 's|https://huggingface.co/([^/]+/[^/]+)/resolve/[^/]+/(.*)|\2|')
     else
-        local repo_id="$repo"
-        local filename="$file_or_url"
+        repo_id="$repo"
+        filename="$file_or_url"
     fi
 
     if [ ! -f "$dir/$filename" ]; then
-        echo "🚀 HF Turbo Download: $filename"
-        
-        # --- БРОНЕБОЙНЫЙ ТУРБО-РЕЖИМ (3 попытки на каждый файл) ---
+        echo "[subenim] 🚀 Download: $filename"
+
         local max_retries=3
         local attempt=1
         local success=0
@@ -90,83 +94,67 @@ download_hf() {
         while [ $attempt -le $max_retries ]; do
             if $VENV_PYTHON -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='$repo_id', filename='$filename', local_dir='$dir', local_dir_use_symlinks=False, token='$HF_TOKEN')"; then
                 success=1
-                break # Успешно скачали, выходим из цикла
+                break
             else
-                echo "⚠️ Обрыв связи при скачивании $filename (Попытка $attempt из $max_retries). Пробуем снова через 3 секунды..."
+                echo "[subenim] ⚠️ Retry $attempt/$max_retries: $filename"
                 attempt=$((attempt + 1))
                 sleep 3
             fi
         done
 
         if [ $success -eq 0 ]; then
-            echo "❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось скачать $filename даже после $max_retries попыток. Идем дальше..."
+            echo "[subenim] ❌ FAILED: $filename"
         fi
+    else
+        echo "[subenim] ✅ EXISTS: $filename"
     fi
 }
 
-function provisioning_get_files() {
-    local dir="$1"
-    shift
-    local files=("$@")
-    for item in "${files[@]}"; do
-        download_hf "$item" "$dir"
-    done
-}
-
+# === [subenim] MAIN ===
 function provisioning_start() {
-    provisioning_get_apt_packages
+
+    echo "[subenim] === SETUP START ==="
+
     provisioning_clone_comfyui
     provisioning_install_base_reqs
     provisioning_get_nodes
-    provisioning_get_pip_packages
 
-    echo "##############################################"
-    echo "# РЕЖИМ: ANIMATOR 2.5                        #"
-    echo "##############################################"
-    
-    # Модели и Контролнеты
+    echo "[subenim] >>> SOURCE: $HF_REPO_ID"
+
+    # === MODELS ===
     download_hf "Wan21_Uni3C_controlnet_fp16.safetensors" "$COMFYUI_DIR/models/controlnet"
     download_hf "WanModel.safetensors" "$COMFYUI_DIR/models/diffusion_models"
     download_hf "vae.safetensors" "$COMFYUI_DIR/models/vae"
     download_hf "klip_vision.safetensors" "$COMFYUI_DIR/models/clip_vision"
     download_hf "text_enc.safetensors" "$COMFYUI_DIR/models/text_encoders"
-    
-    # LoRAs
+
+    # === LORAS ===
     download_hf "WanFun.reworked.safetensors" "$COMFYUI_DIR/models/loras"
     download_hf "light.safetensors" "$COMFYUI_DIR/models/loras"
     download_hf "wan.reworked.safetensors" "$COMFYUI_DIR/models/loras"
     download_hf "WanPusa.safetensors" "$COMFYUI_DIR/models/loras"
-    
-    # Вспомогательные
+
+    # === AUX ===
     download_hf "sam2.1_hiera_base_plus.safetensors" "$COMFYUI_DIR/models/sam2"
     download_hf "vitpose_h_wholebody_model.onnx" "$COMFYUI_DIR/models/detection"
     download_hf "vitpose_h_wholebody_data.bin" "$COMFYUI_DIR/models/detection"
     download_hf "yolov10m.onnx" "$COMFYUI_DIR/models/detection"
 
-    echo "HERWAM настроил всё под ANIMATOR 2.5!"
+    echo "[subenim] === DONE ==="
 }
 
+# === [subenim] CORE ===
 function provisioning_clone_comfyui() {
     if [[ ! -d "${COMFYUI_DIR}" ]]; then
+        echo "[subenim] Cloning ComfyUI..."
         git clone https://github.com/comfyanonymous/ComfyUI.git "${COMFYUI_DIR}"
     fi
 }
 
 function provisioning_install_base_reqs() {
     cd "${COMFYUI_DIR}"
+    echo "[subenim] Installing requirements..."
     $VENV_PIP install --no-cache-dir -r requirements.txt
-}
-
-function provisioning_get_apt_packages() {
-    if [[ ${#APT_PACKAGES[@]} -gt 0 ]]; then
-        sudo apt update && sudo apt install -y "${APT_PACKAGES[@]}"
-    fi
-}
-
-function provisioning_get_pip_packages() {
-    if [[ ${#PIP_PACKAGES[@]} -gt 0 ]]; then
-        $VENV_PIP install --no-cache-dir "${PIP_PACKAGES[@]}"
-    fi
 }
 
 function provisioning_get_nodes() {
@@ -174,46 +162,13 @@ function provisioning_get_nodes() {
     cd "${COMFYUI_DIR}/custom_nodes"
     for repo in "${NODES[@]}"; do
         dir="${repo##*/}"
-        path="./${dir}"
-        if [[ ! -d "$path" ]]; then
-            git clone "$repo" "$path" --recursive
-        fi
-        if [[ -f "$path/requirements.txt" ]]; then
-            sed -i '/torch/d; /torchvision/d' "$path/requirements.txt"
-            $VENV_PIP install --no-cache-dir -r "$path/requirements.txt"
+        if [[ ! -d "$dir" ]]; then
+            echo "[subenim] Node: $dir"
+            git clone "$repo" "$dir" --recursive
         fi
     done
 }
 
 provisioning_start
 
-rm -f /.provisioning
-
-echo "=== ХЕРВАМ запускает ComfyUI ==="
-# --- ФИНАЛЬНЫЙ БАННЕР HERWAM ---
-echo "##############################################################"
-echo "#                                                            #"
-echo "#  _    _  ______  _____  __          __     __  __          #"
-echo "# | |  | ||  ____||  __ \ \ \        / /\   |  \/  |         #"
-echo "# | |__| || |__   | |__) | \ \  /\  / /  \  | \  / |         #"
-echo "# |  __  ||  __|  |  _  /   \ \/  \/ / /\ \ | |\/| |         #"
-echo "# | |  | || |____ | | \ \    \  /\  / ____ \| |  | |         #"
-echo "# |_|  |_||______||_|  \_\    \/  \/_/    \_\_|  |_|         #"
-echo "#                                                            #"
-echo "##############################################################"
-echo " "
-# --- ВЫВОД ПРАВ СОБСТВЕННОСТИ В ЛОГИ ---
-echo "#################################################################################"
-echo "#                                                                               #"
-echo "#   (c) 2026 HERWAM. ALL RIGHTS RESERVED.                                       #"
-echo "#                                                                               #"
-echo "#   THIS CONFIGURATION FILE IS THE INTELLECTUAL PROPERTY OF THE OWNER.          #"
-echo "#   ANY COPYING, DISTRIBUTION, OR USE OF THIS CODE WITHOUT THE EXPRESS          #"
-echo "#   WRITTEN PERMISSION OF THE OWNER IS STRICTLY PROHIBITED.                     #"
-echo "#                                                                               #"
-echo "#   (c) 2026 HERWAM. ВСЕ ПРАВА ЗАЩИЩЕНЫ.                                        #"
-echo "#                                                                               #"
-echo "#   ДАННЫЙ ФАЙЛ ЯВЛЯЕТСЯ ИНТЕЛЛЕКТУАЛЬНОЙ СОБСТВЕННОСТЬЮ ВЛАДЕЛЬЦА.             #"
-echo "#   КОПИРОВАНИЕ ИЛИ ИСПОЛЬЗОВАНИЕ БЕЗ РАЗРЕШЕНИЯ СТРОГО ЗАПРЕЩЕНО.              #"
-echo "#   ДЛЯ СОТРУДНИЧЕСТВА ОБРАЩАТЬСЯ В TG https://t.me/vnknshn                     #"
-echo "#################################################################################"
+echo "[subenim] === LAUNCH READY ==="
