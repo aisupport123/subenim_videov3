@@ -45,14 +45,15 @@ NODES=(
 
 # ЗАГРУЗКА ФАЙЛОВ НУЖНЫХ
 CLIP_MODELS=(
-    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/klip_vision.safetensors"
+    "https://huggingface.co/vilone60/videov3/resolve/main/klip_vision.safetensors"
 )
+
 CLIPS=(
-"https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors"
+    "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors"
 )
 
 TEXT_ENCODERS=(
-"https://huggingface.co/vilone60/videov3/resolve/main/text_enc.safetensors"
+    "https://huggingface.co/vilone60/videov3/resolve/main/text_enc.safetensors"
 )
 
 UNET_MODELS=(
@@ -64,32 +65,31 @@ VAE_MODELS=(
 )
 
 DETECTION_MODELS=(
-"https://huggingface.co/vilone60/videov3/resolve/main/Wan21_Uni3C_controlnet_fp16.safetensors"
-"https://huggingface.co/vilone60/videov3/resolve/main/vitpose_h_wholebody_data.bin"
-"https://huggingface.co/vilone60/videov3/resolve/main/vitpose_h_wholebody_model.onnx"
-"https://huggingface.co/vilone60/videov3/resolve/main/yolov10m.onnx"
-
+    "https://huggingface.co/vilone60/videov3/resolve/main/Wan21_Uni3C_controlnet_fp16.safetensors"
+    "https://huggingface.co/vilone60/videov3/resolve/main/vitpose_h_wholebody_data.bin"
+    "https://huggingface.co/vilone60/videov3/resolve/main/vitpose_h_wholebody_model.onnx"
+    "https://huggingface.co/vilone60/videov3/resolve/main/yolov10m.onnx"
 )
 
 LORAS=(
-"https://huggingface.co/vilone60/videov3/resolve/main/WanFun.reworked.safetensors"
-"https://huggingface.co/vilone60/videov3/resolve/main/light.safetensors"
-"https://huggingface.co/vilone60/videov3/resolve/main/WanPusa.safetensors"
-"https://huggingface.co/vilone60/videov3/resolve/main/wan.reworked.safetensors"
-"https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/LoRAs/Wan22_relight/WanAnimate_relight_lora_fp16.safetensors"
-"https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_AccVid_I2V_480P_14B_lora_rank32_fp16.safetensors"
+    "https://huggingface.co/vilone60/videov3/resolve/main/WanFun.reworked.safetensors"
+    "https://huggingface.co/vilone60/videov3/resolve/main/light.safetensors"
+    "https://huggingface.co/vilone60/videov3/resolve/main/WanPusa.safetensors"
+    "https://huggingface.co/vilone60/videov3/resolve/main/wan.reworked.safetensors"
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/LoRAs/Wan22_relight/WanAnimate_relight_lora_fp16.safetensors"
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_AccVid_I2V_480P_14B_lora_rank32_fp16.safetensors"
 )
 
 CLIP_VISION=(
-"https://huggingface.co/vilone60/videov3/resolve/main/klip_vision.safetensors"
+    "https://huggingface.co/vilone60/videov3/resolve/main/klip_vision.safetensors"
 )
 
 DEFFUSION=(
-"https://huggingface.co/vilone60/videov3/resolve/main/WanModel.safetensors"
+    "https://huggingface.co/vilone60/videov3/resolve/main/WanModel.safetensors"
 )
 
 SAM=(
-"https://huggingface.co/vilone60/videov3/resolve/main/sam2.1_hiera_base_plus.safetensors"
+    "https://huggingface.co/vilone60/videov3/resolve/main/sam2.1_hiera_base_plus.safetensors"
 )
 
 ### ─────────────────────────────────────────────
@@ -115,12 +115,11 @@ function provisioning_start() {
     provisioning_get_files "${COMFYUI_DIR}/models/clip_vision"        "${CLIP_VISION[@]}"
     provisioning_get_files "${COMFYUI_DIR}/models/text_encoders"      "${TEXT_ENCODERS[@]}"
     provisioning_get_files "${COMFYUI_DIR}/models/vae"                "${VAE_MODELS[@]}"
-
-    provisioning_get_files "${COMFYUI_DIR}/models/detection"   "${DETECTION_MODELS[@]}"
-    provisioning_get_files "${COMFYUI_DIR}/models/loras"   "${LORAS[@]}"
-    provisioning_get_files "${COMFYUI_DIR}/models/diffusion_models"     "${DEFFUSION[@]}"
-    provisioning_get_files "${COMFYUI_DIR}/models/sams"     "${SAM[@]}"
-
+    provisioning_get_files "${COMFYUI_DIR}/models/unet"               "${UNET_MODELS[@]}"
+    provisioning_get_files "${COMFYUI_DIR}/models/detection"          "${DETECTION_MODELS[@]}"
+    provisioning_get_files "${COMFYUI_DIR}/models/loras"              "${LORAS[@]}"
+    provisioning_get_files "${COMFYUI_DIR}/models/diffusion_models"   "${DEFFUSION[@]}"
+    provisioning_get_files "${COMFYUI_DIR}/models/sams"               "${SAM[@]}"
 
     echo ""
     echo "subenim настроил → Starting ComfyUI..."
@@ -191,14 +190,33 @@ function provisioning_get_files() {
 
     for url in "${files[@]}"; do
         echo "→ $url"
-        local auth_header=""
-        if [[ -n "$HF_TOKEN" && "$url" =~ huggingface\.co ]]; then
-            auth_header="--header=Authorization: Bearer $HF_TOKEN"
-        elif [[ -n "$CIVITAI_TOKEN" && "$url" =~ civitai\.com ]]; then
-            auth_header="--header=Authorization: Bearer $CIVITAI_TOKEN"
+        local filename
+        filename="$(basename "${url%%\?*}")"
+
+        if [[ -f "$dir/$filename" ]]; then
+            echo " [✓] Уже существует: $filename"
+            echo ""
+            continue
         fi
 
-        wget $auth_header -nc --content-disposition --show-progress -e dotbytes=4M -P "$dir" "$url" || echo " [!] Download failed: $url"
+        if [[ -n "$HF_TOKEN" && "$url" =~ huggingface\.co ]]; then
+            wget --header="Authorization: Bearer $HF_TOKEN" \
+                -nc --content-disposition --show-progress -e dotbytes=4M \
+                -P "$dir" "$url"
+        elif [[ -n "$CIVITAI_TOKEN" && "$url" =~ civitai\.com ]]; then
+            wget --header="Authorization: Bearer $CIVITAI_TOKEN" \
+                -nc --content-disposition --show-progress -e dotbytes=4M \
+                -P "$dir" "$url"
+        else
+            wget -nc --content-disposition --show-progress -e dotbytes=4M \
+                -P "$dir" "$url"
+        fi
+
+        if [[ ! -f "$dir/$filename" ]]; then
+            echo " [!] Download failed or file missing: $filename"
+            exit 1
+        fi
+
         echo ""
     done
 }
@@ -212,7 +230,6 @@ fi
 echo "=== subenim запускает ComfyUI ==="
 cd "${COMFYUI_DIR}"
 python main.py --listen 0.0.0.0 --port 8188
-
 
 echo -e "${MAGENTA}"
 echo "███████╗██╗   ██╗██████╗ ███████╗███╗   ██╗██╗███╗   ███╗"
