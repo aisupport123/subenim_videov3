@@ -1,232 +1,217 @@
 #!/bin/bash
-
-# === [subenim] INIT ===
+set -e
 source /venv/main/bin/activate
 
 WORKSPACE=${WORKSPACE:-/workspace}
 COMFYUI_DIR="${WORKSPACE}/ComfyUI"
-VENV_PYTHON="/venv/main/bin/python"
-VENV_PIP="/venv/main/bin/pip"
 
-export PYTORCH_ALLOC_CONF="expandable_segments:True"
-export HF_HUB_ENABLE_HF_TRANSFER=1
+echo "===  subenim запускает VIDEO GENERATOR V1 ==="
 
-HF_REPO_ID="${HF_REPO_ID:-vilone60/videov3}"
+APT_PACKAGES=()           # если нужно — добавь sudo apt install ...
+PIP_PACKAGES=()           # глобальные pip пакеты, если сверх requirements
 
-# === LOGGING ===
-LOG_FILE="${WORKSPACE}/provision.log"
-mkdir -p "${WORKSPACE}"
-exec > >(tee -a "$LOG_FILE") 2>&1
-echo "[subenim] === LOG: $LOG_FILE ==="
-
-if [ -z "$HF_TOKEN" ]; then
-    echo -e "\033[0;31m[subenim][!] HF_TOKEN не найден!\033[0m"
-    echo -e "\033[0;33m[subenim] Передай через -e HF_TOKEN=hf_...\033[0m"
-fi
-
-echo "[subenim] === COMFYUI START ==="
-
-# === [subenim] SETUP ===
-$VENV_PIP install --no-cache-dir hf_transfer || echo "[subenim] ⚠️ hf_transfer install failed"
-
-echo "[subenim] >>> Оптимизация DWPose..."
-$VENV_PIP uninstall -y pynvml || true
-$VENV_PIP install --no-cache-dir nvidia-ml-py || echo "[subenim] ⚠️ nvidia-ml-py install failed"
-$VENV_PIP install --no-cache-dir onnxruntime-gpu \
-    --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/ \
-    || echo "[subenim] ⚠️ onnxruntime-gpu install failed"
-
-# === [subenim] NODES ===
 NODES=(
-    "https://github.com/ltdrdata/ComfyUI-Manager"
-    "https://github.com/ltdrdata/ComfyUI-Impact-Pack"
-    "https://github.com/ltdrdata/ComfyUI-Impact-Subpack"
     "https://github.com/kijai/ComfyUI-WanVideoWrapper"
-    "https://github.com/kijai/ComfyUI-KJNodes"
-    "https://github.com/kijai/ComfyUI-segment-anything-2"
-    "https://github.com/kijai/ComfyUI-WanAnimatePreprocess"
-    "https://github.com/pythongosssss/ComfyUI-Custom-Scripts"
     "https://github.com/chflame163/ComfyUI_LayerStyle"
-    "https://github.com/rgthree/rgthree-comfy"
     "https://github.com/yolain/ComfyUI-Easy-Use"
-    "https://github.com/cubiq/ComfyUI_essentials"
+    "https://github.com/kijai/ComfyUI-KJNodes"
     "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite"
-    "https://github.com/jnxmx/ComfyUI_HuggingFace_Downloader"
+    "https://github.com/kijai/ComfyUI-segment-anything-2"
+    "https://github.com/cubiq/ComfyUI_essentials"
     "https://github.com/fq393/ComfyUI-ZMG-Nodes"
-    "https://github.com/ClownsharkBatwing/RES4LYF"
-    "https://github.com/chrisgoringe/cg-use-everywhere"
-    "https://github.com/crystian/ComfyUI-Crystools"
-    "https://github.com/plugcrypt/CRT-Nodes"
-    "https://github.com/evanspearman/ComfyMath"
-    "https://github.com/Fannovel16/comfyui_controlnet_aux"
-    "https://github.com/Smirnov75/ComfyUI-mxToolkit"
-    "https://github.com/TheLustriVA/ComfyUI-Image-Size-Tools"
-    "https://github.com/ZhiHui6/zhihui_nodes_comfyui"
-    "https://github.com/EllangoK/ComfyUI-post-processing-nodes"
-    "https://github.com/teskor-hub/comfyui-teskors-utils"
-    "https://github.com/hanjangma41/NEW-UTILSs"
-    "https://github.com/WASasquatch/was-node-suite-comfyui"
+    "https://github.com/kijai/ComfyUI-WanAnimatePreprocess"
+    "https://github.com/rgthree/rgthree-comfy"
+    "https://github.com/jnxmx/ComfyUI_HuggingFace_Downloader"
+    "https://github.com/teskor-hub/NEW-UTILS.git"
+    "https://github.com/aisupport123/subenim_nodes.git"
+    "https://github.com/rgthree/rgthree-comfy"
     "https://github.com/Starnodes2024/ComfyUI_StarNodes"
     "https://github.com/DesertPixelAi/ComfyUI-Desert-Pixel-Nodes"
+    "https://github.com/Fannovel16/comfyui_controlnet_aux"
+    "https://github.com/GACLove/ComfyUI-VFI"
+    "https://github.com/kijai/ComfyUI-WanVideoWrapper"
+    "https://github.com/kijai/ComfyUI-WanAnimatePreprocess"
+    "https://github.com/kijai/ComfyUI-KJNodes"
+    "https://github.com/rgthree/rgthree-comfy"
+    "https://github.com/ltdrdata/ComfyUI-Impact-Pack"
+    "https://github.com/teskor-hub/comfyui-teskors-utils"
+    "https://github.com/PozzettiAndrea/ComfyUI-SAM3"
+    "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite"
+    "https://github.com/ClownsharkBatwing/ComfyUI-ClownsharK"
+    "https://github.com/cubiq/ComfyUI_essentials"
+    "https://github.com/LeonQ8/ComfyUI-Dynamic-Lora-Scheduler"
+    "https://github.com/PGCRT/CRT-Nodes"
 )
 
-# === [subenim] DOWNLOAD FUNC ===
-download_hf() {
-    local file_or_url="$1"
-    local dir="$2"
-    local repo="${3:-$HF_REPO_ID}"
-
-    mkdir -p "$dir"
-
-    local repo_id
-    local filename
-
-    if [[ "$file_or_url" =~ huggingface\.co ]]; then
-        repo_id=$(echo "$file_or_url" | sed -E 's|https://huggingface.co/([^/]+/[^/]+)/resolve/[^/]+/(.*)|\1|')
-        filename=$(echo "$file_or_url" | sed -E 's|https://huggingface.co/([^/]+/[^/]+)/resolve/[^/]+/(.*)|\2|')
-    else
-        repo_id="$repo"
-        filename="$file_or_url"
-    fi
-
-    if [ ! -f "$dir/$filename" ]; then
-        echo "[subenim] 🚀 Download: $filename"
-
-        local max_retries=3
-        local attempt=1
-        local success=0
-
-        while [ $attempt -le $max_retries ]; do
-            if $VENV_PYTHON -c "
-from huggingface_hub import hf_hub_download
-hf_hub_download(
-    repo_id='$repo_id',
-    filename='$filename',
-    local_dir='$dir',
-    local_dir_use_symlinks=False,
-    token='$HF_TOKEN'
+# ЗАГРУЗКА ФАЙЛОВ НУЖНЫХ
+CLIP_MODELS=(
+    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/klip_vision.safetensors"
 )
-"; then
-                success=1
-                break
-            else
-                echo "[subenim] ⚠️ Retry $attempt/$max_retries: $filename"
-                attempt=$((attempt + 1))
-                sleep 3
-            fi
-        done
+CLIPS=(
+"https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors"
+)
 
-        if [ $success -eq 0 ]; then
-            echo "[subenim] ❌ FAILED: $filename"
-        fi
-    else
-        echo "[subenim] ✅ EXISTS: $filename"
-    fi
-}
+TEXT_ENCODERS=(
+"https://huggingface.co/vilone60/videov3/resolve/main/text_enc.safetensors"
+)
 
-# === [subenim] MAIN ===
+UNET_MODELS=(
+    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors"
+)
+
+VAE_MODELS=(
+    "https://huggingface.co/vilone60/videov3/resolve/main/vae.safetensors"
+)
+
+DETECTION_MODELS=(
+"https://huggingface.co/vilone60/videov3/resolve/main/Wan21_Uni3C_controlnet_fp16.safetensors"
+"https://huggingface.co/vilone60/videov3/resolve/main/vitpose_h_wholebody_data.bin"
+"https://huggingface.co/vilone60/videov3/resolve/main/vitpose_h_wholebody_model.onnx"
+"https://huggingface.co/vilone60/videov3/resolve/main/yolov10m.onnx"
+
+)
+
+LORAS=(
+"https://huggingface.co/vilone60/videov3/resolve/main/WanFun.reworked.safetensors"
+"https://huggingface.co/vilone60/videov3/resolve/main/light.safetensors?download=trues"
+"https://huggingface.co/vilone60/videov3/resolve/main/WanPusa.safetensors"
+"https://huggingface.co/vilone60/videov3/resolve/main/wan.reworked.safetensors"
+"https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/LoRAs/Wan22_relight/WanAnimate_relight_lora_fp16.safetensors"
+"https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_AccVid_I2V_480P_14B_lora_rank32_fp16.safetensors"
+)
+
+CLIP_VISION=(
+"https://huggingface.co/vilone60/videov3/resolve/main/klip_vision.safetensors"
+)
+
+DEFFUSION=(
+"https://huggingface.co/vilone60/videov3/resolve/main/WanModel.safetensors"
+)
+
+SAM=(
+"
+
+### ─────────────────────────────────────────────
+### DO NOT EDIT BELOW UNLESS YOU KNOW WHAT YOU ARE DOING
+### ─────────────────────────────────────────────
+
 function provisioning_start() {
-    echo "[subenim] === SETUP START ==="
+    echo ""
+    echo "##############################################"
+    echo "# FUCK THIS WORLD                            #"
+    echo "# subenim_v4 2026-2027                       #"
+    echo "# BY @againstdrigs                           #"
+    echo "##############################################"
+    echo ""
 
+    provisioning_get_apt_packages
     provisioning_clone_comfyui
     provisioning_install_base_reqs
     provisioning_get_nodes
+    provisioning_get_pip_packages
 
-    echo "[subenim] >>> SOURCE: $HF_REPO_ID"
+    provisioning_get_files "${COMFYUI_DIR}/models/clip"               "${CLIP_MODELS[@]}"
+    provisioning_get_files "${COMFYUI_DIR}/models/clip_vision"        "${CLIP_VISION[@]}"
+    provisioning_get_files "${COMFYUI_DIR}/models/text_encoders"      "${TEXT_ENCODERS[@]}"
+    provisioning_get_files "${COMFYUI_DIR}/models/vae"                "${VAE_MODELS[@]}"
 
-    # === MODELS ===
-    download_hf "Wan21_Uni3C_controlnet_fp16.safetensors" "$COMFYUI_DIR/models/controlnet"
-    download_hf "WanModel.safetensors"                    "$COMFYUI_DIR/models/diffusion_models"
-    download_hf "vae.safetensors"                         "$COMFYUI_DIR/models/vae"
-    download_hf "klip_vision.safetensors"                 "$COMFYUI_DIR/models/clip_vision"
-    download_hf "text_enc.safetensors"                    "$COMFYUI_DIR/models/text_encoders"
+    provisioning_get_files "${COMFYUI_DIR}/models/detection"   "${DETECTION_MODELS[@]}"
+    provisioning_get_files "${COMFYUI_DIR}/models/loras"   "${LORAS[@]}"
+    provisioning_get_files "${COMFYUI_DIR}/models/diffusion_models"     "${DEFFUSION[@]}"
+    provisioning_get_files "${COMFYUI_DIR}/models/sams"     "${SAM[@]}"
 
-    # === LORAS ===
-    download_hf "WanFun.reworked.safetensors"             "$COMFYUI_DIR/models/loras"
-    download_hf "light.safetensors"                       "$COMFYUI_DIR/models/loras"
-    download_hf "wan.reworked.safetensors"                "$COMFYUI_DIR/models/loras"
-    download_hf "WanPusa.safetensors"                     "$COMFYUI_DIR/models/loras"
 
-    # === AUX ===
-    download_hf "sam2.1_hiera_base_plus.safetensors"      "$COMFYUI_DIR/models/sam2"
-    download_hf "vitpose_h_wholebody_model.onnx"          "$COMFYUI_DIR/models/detection"
-    download_hf "vitpose_h_wholebody_data.bin"            "$COMFYUI_DIR/models/detection"
-    download_hf "yolov10m.onnx"                           "$COMFYUI_DIR/models/detection"
-
-    echo "[subenim] === DONE ==="
+    echo ""
+    echo "subenim настроил → Starting ComfyUI..."
+    echo ""
 }
 
-# === [subenim] CORE ===
 function provisioning_clone_comfyui() {
     if [[ ! -d "${COMFYUI_DIR}" ]]; then
-        echo "[subenim] Cloning ComfyUI..."
-        git clone https://github.com/comfyanonymous/ComfyUI.git "${COMFYUI_DIR}" \
-            || { echo "[subenim] ❌ FAILED: clone ComfyUI"; exit 1; }
-    else
-        echo "[subenim] ✅ ComfyUI already exists, pulling latest..."
-        git -C "${COMFYUI_DIR}" pull || echo "[subenim] ⚠️ git pull failed, continuing with existing"
+        echo "subenim клонирует ComfyUI..."
+        git clone https://github.com/comfyanonymous/ComfyUI.git "${COMFYUI_DIR}"
     fi
+    cd "${COMFYUI_DIR}"
 }
 
 function provisioning_install_base_reqs() {
-    cd "${COMFYUI_DIR}"
-    echo "[subenim] Installing ComfyUI requirements..."
-    $VENV_PIP install --no-cache-dir -r requirements.txt \
-        || { echo "[subenim] ❌ FAILED: base requirements"; exit 1; }
+    if [[ -f requirements.txt ]]; then
+        echo "subenim установливает base requirements..."
+        pip install --no-cache-dir -r requirements.txt
+    fi
+}
+
+function provisioning_get_apt_packages() {
+    if [[ ${#APT_PACKAGES[@]} -gt 0 ]]; then
+        echo "subenim устанавливает apt packages..."
+        sudo apt update && sudo apt install -y "${APT_PACKAGES[@]}"
+    fi
+}
+
+function provisioning_get_pip_packages() {
+    if [[ ${#PIP_PACKAGES[@]} -gt 0 ]]; then
+        echo "subenim устанавливает extra pip packages..."
+        pip install --no-cache-dir "${PIP_PACKAGES[@]}"
+    fi
 }
 
 function provisioning_get_nodes() {
     mkdir -p "${COMFYUI_DIR}/custom_nodes"
     cd "${COMFYUI_DIR}/custom_nodes"
 
-    local failed_nodes=()
-
     for repo in "${NODES[@]}"; do
         dir="${repo##*/}"
-        if [[ ! -d "$dir" ]]; then
-            echo "[subenim] >>> Cloning node: $dir"
-            if git clone "$repo" "$dir" --recursive --depth=1; then
-                echo "[subenim] ✅ Cloned: $dir"
-            else
-                echo "[subenim] ❌ FAILED clone: $repo"
-                failed_nodes+=("$repo")
-                continue
-            fi
+        path="./${dir}"
+
+        if [[ -d "$path" ]]; then
+            echo "Updating node: $dir"
+            (cd "$path" && git pull --ff-only 2>/dev/null || { git fetch && git reset --hard origin/main; })
         else
-            echo "[subenim] ✅ EXISTS: $dir — pulling updates..."
-            git -C "$dir" pull || echo "[subenim] ⚠️ git pull failed for $dir"
+            echo "Cloning node: $dir"
+            git clone "$repo" "$path" --recursive || echo " [!] Clone failed: $repo"
         fi
 
-        # Install node dependencies if present
-        if [[ -f "$dir/requirements.txt" ]]; then
-            echo "[subenim] 📦 Installing deps: $dir"
-            $VENV_PIP install --no-cache-dir -r "$dir/requirements.txt" \
-                || echo "[subenim] ⚠️ Some deps failed for: $dir"
-        fi
-
-        # Run install.py if present
-        if [[ -f "$dir/install.py" ]]; then
-            echo "[subenim] 🔧 Running install.py: $dir"
-            $VENV_PYTHON "$dir/install.py" \
-                || echo "[subenim] ⚠️ install.py failed for: $dir"
+        requirements="${path}/requirements.txt"
+        if [[ -f "$requirements" ]]; then
+            echo "Installing deps for $dir..."
+            pip install --no-cache-dir -r "$requirements" || echo " [!] pip requirements failed for $dir"
         fi
     done
-
-    if [ ${#failed_nodes[@]} -gt 0 ]; then
-        echo "[subenim] ⚠️ Failed nodes:"
-        for n in "${failed_nodes[@]}"; do
-            echo "  - $n"
-        done
-    fi
 }
 
-provisioning_start
+function provisioning_get_files() {
+    if [[ $# -lt 2 ]]; then return; fi
+    local dir="$1"
+    shift
+    local files=("$@")
 
-echo "[subenim] === LAUNCH READY ==="
+    mkdir -p "$dir"
+    echo "Скачивание ${#files[@]} file(s) → $dir..."
 
-MAGENTA='\033[0;35m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+    for url in "${files[@]}"; do
+        echo "→ $url"
+        local auth_header=""
+        if [[ -n "$HF_TOKEN" && "$url" =~ huggingface\.co ]]; then
+            auth_header="--header=Authorization: Bearer $HF_TOKEN"
+        elif [[ -n "$CIVITAI_TOKEN" && "$url" =~ civitai\.com ]]; then
+            auth_header="--header=Authorization: Bearer $CIVITAI_TOKEN"
+        fi
+
+        wget $auth_header -nc --content-disposition --show-progress -e dotbytes=4M -P "$dir" "$url" || echo " [!] Download failed: $url"
+        echo ""
+    done
+}
+
+# Запуск provisioning если не отключен
+if [[ ! -f /.noprovisioning ]]; then
+    provisioning_start
+fi
+
+# Запуск ComfyUI
+echo "=== subenim запускает ComfyUI ==="
+cd "${COMFYUI_DIR}"
+python main.py --listen 0.0.0.0 --port 8188
+
 
 echo -e "${MAGENTA}"
 echo "███████╗██╗   ██╗██████╗ ███████╗███╗   ██╗██╗███╗   ███╗"
