@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 # === [subenim] INIT ===
 source /venv/main/bin/activate
@@ -14,22 +13,28 @@ export HF_HUB_ENABLE_HF_TRANSFER=1
 
 HF_REPO_ID="${HF_REPO_ID:-vilone60/videov3}"
 
+# === LOGGING ===
+LOG_FILE="${WORKSPACE}/provision.log"
+mkdir -p "${WORKSPACE}"
+exec > >(tee -a "$LOG_FILE") 2>&1
+echo "[subenim] === LOG: $LOG_FILE ==="
+
 if [ -z "$HF_TOKEN" ]; then
-    echo -e "\033[0;31m [subenim][!] HF_TOKEN не найден! \033[0m"
-    echo -e "\033[0;33m [subenim] Передай через -e HF_TOKEN=hf_... \033[0m"
+    echo -e "\033[0;31m[subenim][!] HF_TOKEN не найден!\033[0m"
+    echo -e "\033[0;33m[subenim] Передай через -e HF_TOKEN=hf_...\033[0m"
 fi
 
-echo "[subenim] === COMFYUI START (ANIMATOR 2.5) ==="
+echo "[subenim] === COMFYUI START ==="
 
 # === [subenim] SETUP ===
-$VENV_PIP install --no-cache-dir hf_transfer
+$VENV_PIP install --no-cache-dir hf_transfer || echo "[subenim] ⚠️ hf_transfer install failed"
 
 echo "[subenim] >>> Оптимизация DWPose..."
-$VENV_PIP uninstall -y pynvml && $VENV_PIP install nvidia-ml-py
-$VENV_PIP install onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
-
-APT_PACKAGES=()
-PIP_PACKAGES=()
+$VENV_PIP uninstall -y pynvml || true
+$VENV_PIP install --no-cache-dir nvidia-ml-py || echo "[subenim] ⚠️ nvidia-ml-py install failed"
+$VENV_PIP install --no-cache-dir onnxruntime-gpu \
+    --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/ \
+    || echo "[subenim] ⚠️ onnxruntime-gpu install failed"
 
 # === [subenim] NODES ===
 NODES=(
@@ -92,7 +97,16 @@ download_hf() {
         local success=0
 
         while [ $attempt -le $max_retries ]; do
-            if $VENV_PYTHON -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='$repo_id', filename='$filename', local_dir='$dir', local_dir_use_symlinks=False, token='$HF_TOKEN')"; then
+            if $VENV_PYTHON -c "
+from huggingface_hub import hf_hub_download
+hf_hub_download(
+    repo_id='$repo_id',
+    filename='$filename',
+    local_dir='$dir',
+    local_dir_use_symlinks=False,
+    token='$HF_TOKEN'
+)
+"; then
                 success=1
                 break
             else
@@ -112,7 +126,6 @@ download_hf() {
 
 # === [subenim] MAIN ===
 function provisioning_start() {
-
     echo "[subenim] === SETUP START ==="
 
     provisioning_clone_comfyui
@@ -123,22 +136,22 @@ function provisioning_start() {
 
     # === MODELS ===
     download_hf "Wan21_Uni3C_controlnet_fp16.safetensors" "$COMFYUI_DIR/models/controlnet"
-    download_hf "WanModel.safetensors" "$COMFYUI_DIR/models/diffusion_models"
-    download_hf "vae.safetensors" "$COMFYUI_DIR/models/vae"
-    download_hf "klip_vision.safetensors" "$COMFYUI_DIR/models/clip_vision"
-    download_hf "text_enc.safetensors" "$COMFYUI_DIR/models/text_encoders"
+    download_hf "WanModel.safetensors"                    "$COMFYUI_DIR/models/diffusion_models"
+    download_hf "vae.safetensors"                         "$COMFYUI_DIR/models/vae"
+    download_hf "klip_vision.safetensors"                 "$COMFYUI_DIR/models/clip_vision"
+    download_hf "text_enc.safetensors"                    "$COMFYUI_DIR/models/text_encoders"
 
     # === LORAS ===
-    download_hf "WanFun.reworked.safetensors" "$COMFYUI_DIR/models/loras"
-    download_hf "light.safetensors" "$COMFYUI_DIR/models/loras"
-    download_hf "wan.reworked.safetensors" "$COMFYUI_DIR/models/loras"
-    download_hf "WanPusa.safetensors" "$COMFYUI_DIR/models/loras"
+    download_hf "WanFun.reworked.safetensors"             "$COMFYUI_DIR/models/loras"
+    download_hf "light.safetensors"                       "$COMFYUI_DIR/models/loras"
+    download_hf "wan.reworked.safetensors"                "$COMFYUI_DIR/models/loras"
+    download_hf "WanPusa.safetensors"                     "$COMFYUI_DIR/models/loras"
 
     # === AUX ===
-    download_hf "sam2.1_hiera_base_plus.safetensors" "$COMFYUI_DIR/models/sam2"
-    download_hf "vitpose_h_wholebody_model.onnx" "$COMFYUI_DIR/models/detection"
-    download_hf "vitpose_h_wholebody_data.bin" "$COMFYUI_DIR/models/detection"
-    download_hf "yolov10m.onnx" "$COMFYUI_DIR/models/detection"
+    download_hf "sam2.1_hiera_base_plus.safetensors"      "$COMFYUI_DIR/models/sam2"
+    download_hf "vitpose_h_wholebody_model.onnx"          "$COMFYUI_DIR/models/detection"
+    download_hf "vitpose_h_wholebody_data.bin"            "$COMFYUI_DIR/models/detection"
+    download_hf "yolov10m.onnx"                           "$COMFYUI_DIR/models/detection"
 
     echo "[subenim] === DONE ==="
 }
@@ -147,31 +160,73 @@ function provisioning_start() {
 function provisioning_clone_comfyui() {
     if [[ ! -d "${COMFYUI_DIR}" ]]; then
         echo "[subenim] Cloning ComfyUI..."
-        git clone https://github.com/comfyanonymous/ComfyUI.git "${COMFYUI_DIR}"
+        git clone https://github.com/comfyanonymous/ComfyUI.git "${COMFYUI_DIR}" \
+            || { echo "[subenim] ❌ FAILED: clone ComfyUI"; exit 1; }
+    else
+        echo "[subenim] ✅ ComfyUI already exists, pulling latest..."
+        git -C "${COMFYUI_DIR}" pull || echo "[subenim] ⚠️ git pull failed, continuing with existing"
     fi
 }
 
 function provisioning_install_base_reqs() {
     cd "${COMFYUI_DIR}"
-    echo "[subenim] Installing requirements..."
-    $VENV_PIP install --no-cache-dir -r requirements.txt
+    echo "[subenim] Installing ComfyUI requirements..."
+    $VENV_PIP install --no-cache-dir -r requirements.txt \
+        || { echo "[subenim] ❌ FAILED: base requirements"; exit 1; }
 }
 
 function provisioning_get_nodes() {
     mkdir -p "${COMFYUI_DIR}/custom_nodes"
     cd "${COMFYUI_DIR}/custom_nodes"
+
+    local failed_nodes=()
+
     for repo in "${NODES[@]}"; do
         dir="${repo##*/}"
         if [[ ! -d "$dir" ]]; then
-            echo "[subenim] Node: $dir"
-            git clone "$repo" "$dir" --recursive
+            echo "[subenim] >>> Cloning node: $dir"
+            if git clone "$repo" "$dir" --recursive --depth=1; then
+                echo "[subenim] ✅ Cloned: $dir"
+            else
+                echo "[subenim] ❌ FAILED clone: $repo"
+                failed_nodes+=("$repo")
+                continue
+            fi
+        else
+            echo "[subenim] ✅ EXISTS: $dir — pulling updates..."
+            git -C "$dir" pull || echo "[subenim] ⚠️ git pull failed for $dir"
+        fi
+
+        # Install node dependencies if present
+        if [[ -f "$dir/requirements.txt" ]]; then
+            echo "[subenim] 📦 Installing deps: $dir"
+            $VENV_PIP install --no-cache-dir -r "$dir/requirements.txt" \
+                || echo "[subenim] ⚠️ Some deps failed for: $dir"
+        fi
+
+        # Run install.py if present
+        if [[ -f "$dir/install.py" ]]; then
+            echo "[subenim] 🔧 Running install.py: $dir"
+            $VENV_PYTHON "$dir/install.py" \
+                || echo "[subenim] ⚠️ install.py failed for: $dir"
         fi
     done
+
+    if [ ${#failed_nodes[@]} -gt 0 ]; then
+        echo "[subenim] ⚠️ Failed nodes:"
+        for n in "${failed_nodes[@]}"; do
+            echo "  - $n"
+        done
+    fi
 }
 
 provisioning_start
 
 echo "[subenim] === LAUNCH READY ==="
+
+MAGENTA='\033[0;35m'
+CYAN='\033[0;36m'
+NC='\033[0m'
 
 echo -e "${MAGENTA}"
 echo "███████╗██╗   ██╗██████╗ ███████╗███╗   ██╗██╗███╗   ███╗"
