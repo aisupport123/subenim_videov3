@@ -73,7 +73,7 @@ DETECTION_MODELS=(
 
 LORAS=(
 "https://huggingface.co/vilone60/videov3/resolve/main/WanFun.reworked.safetensors"
-"https://huggingface.co/vilone60/videov3/resolve/main/light.safetensors?download=trues"
+"https://huggingface.co/vilone60/videov3/resolve/main/light.safetensors"
 "https://huggingface.co/vilone60/videov3/resolve/main/WanPusa.safetensors"
 "https://huggingface.co/vilone60/videov3/resolve/main/wan.reworked.safetensors"
 "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/LoRAs/Wan22_relight/WanAnimate_relight_lora_fp16.safetensors"
