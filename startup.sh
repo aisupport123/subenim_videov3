@@ -41,6 +41,7 @@ NODES=(
     "https://github.com/cubiq/ComfyUI_essentials"
     "https://github.com/LeonQ8/ComfyUI-Dynamic-Lora-Scheduler"
     "https://github.com/PGCRT/CRT-Nodes"
+    "https://github.com/evanspearman/ComfyMath"
 )
 
 # ЗАГРУЗКА ФАЙЛОВ НУЖНЫХ
@@ -56,16 +57,12 @@ TEXT_ENCODERS=(
     "https://huggingface.co/vilone60/videov3/resolve/main/text_enc.safetensors"
 )
 
-UNET_MODELS=(
-    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors"
-)
-
 VAE_MODELS=(
     "https://huggingface.co/vilone60/videov3/resolve/main/vae.safetensors"
 )
 
 DETECTION_MODELS=(
-    "https://huggingface.co/vilone60/videov3/resolve/main/Wan21_Uni3C_controlnet_fp16.safetensors"
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_Uni3C_controlnet_fp16.safetensors"
     "https://huggingface.co/vilone60/videov3/resolve/main/vitpose_h_wholebody_data.bin"
     "https://huggingface.co/vilone60/videov3/resolve/main/vitpose_h_wholebody_model.onnx"
     "https://huggingface.co/vilone60/videov3/resolve/main/yolov10m.onnx"
