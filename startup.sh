@@ -62,10 +62,13 @@ VAE_MODELS=(
 )
 
 DETECTION_MODELS=(
-    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_Uni3C_controlnet_fp16.safetensors"
     "https://huggingface.co/vilone60/videov3/resolve/main/vitpose_h_wholebody_data.bin"
     "https://huggingface.co/vilone60/videov3/resolve/main/vitpose_h_wholebody_model.onnx"
     "https://huggingface.co/vilone60/videov3/resolve/main/yolov10m.onnx"
+)
+
+CONTROL=(
+"https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_Uni3C_controlnet_fp16.safetensors"
 )
 
 LORAS=(
@@ -98,7 +101,7 @@ function provisioning_start() {
     echo "##############################################"
     echo "# FUCK THIS WORLD                            #"
     echo "# subenim_v4 2026-2027                       #"
-    echo "# BY @againstdrigs                           #"
+    echo "# BY @againstdrugs                           #"
     echo "##############################################"
     echo ""
 
@@ -117,6 +120,7 @@ function provisioning_start() {
     provisioning_get_files "${COMFYUI_DIR}/models/loras"              "${LORAS[@]}"
     provisioning_get_files "${COMFYUI_DIR}/models/diffusion_models"   "${DEFFUSION[@]}"
     provisioning_get_files "${COMFYUI_DIR}/models/sams"               "${SAM[@]}"
+    provisioning_get_files "${COMFYUI_DIR}/models/controlnet"         "${CONTROL[@]}"
 
     echo ""
     echo "subenim настроил → Starting ComfyUI..."
