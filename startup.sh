@@ -5,7 +5,7 @@ source /venv/main/bin/activate
 WORKSPACE=${WORKSPACE:-/workspace}
 COMFYUI_DIR="${WORKSPACE}/ComfyUI"
 
-echo "===  subenim запускает VIDEO GENERATOR V1 ==="
+echo "===  subenim запускает VIDEO V3 ==="
 
 APT_PACKAGES=()           # если нужно — добавь sudo apt install ...
 PIP_PACKAGES=()           # глобальные pip пакеты, если сверх requirements
