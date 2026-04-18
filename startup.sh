@@ -89,7 +89,8 @@ DEFFUSION=(
 )
 
 SAM=(
-"
+"https://huggingface.co/vilone60/videov3/resolve/main/sam2.1_hiera_base_plus.safetensors"
+)
 
 ### ─────────────────────────────────────────────
 ### DO NOT EDIT BELOW UNLESS YOU KNOW WHAT YOU ARE DOING
