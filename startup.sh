@@ -51,7 +51,7 @@ NODES=(
 )
 
 CLIP_MODELS=(
-  "https://huggingface.co/vilone60/videov3/resolve/main/klip_vision.safetensors"
+  "https://huggingface.co/vilone60/video3/resolve/main/klip_vision.safetensors"
 )
 
 TEXT_ENCODERS=(
