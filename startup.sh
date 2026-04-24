@@ -83,6 +83,7 @@ LORAS=(
 
 CLIP_VISION=(
   "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors"
+  "https://huggingface.co/vilone60/video3/resolve/main/klip_vision.safetensors"
 )
 
 DIFFUSION_MODELS=(
